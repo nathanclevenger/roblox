@@ -24,6 +24,8 @@ export type PlayerStateManager = typeof(setmetatable(
 	{} :: {
 		states: { [Player]: Types.PlayerState },
 		downedTimers: { [Player]: number },
+		livesManager: any?, -- set after construction to avoid circular require
+		reviveSystem: any?, -- set after construction to avoid circular require
 	},
 	PlayerStateManager
 ))
@@ -35,6 +37,8 @@ function PlayerStateManager.new(): PlayerStateManager
 	local self = setmetatable({
 		states = {},
 		downedTimers = {},
+		livesManager = nil,
+		reviveSystem = nil,
 	}, PlayerStateManager)
 
 	-- Connect client item-use requests (validated server-side)
@@ -86,6 +90,20 @@ function PlayerStateManager.initPlayer(self: PlayerStateManager, player: Player)
 	self:replicateState(player)
 
 	print(`[PlayerStateManager] Initialized state for {player.Name}`)
+end
+
+--[[
+	Wire in a LivesManager reference (set after construction to avoid circular require).
+]]
+function PlayerStateManager.setLivesManager(self: PlayerStateManager, livesManager: any)
+	self.livesManager = livesManager
+end
+
+--[[
+	Wire in a ReviveSystem reference (set after construction to avoid circular require).
+]]
+function PlayerStateManager.setReviveSystem(self: PlayerStateManager, reviveSystem: any)
+	self.reviveSystem = reviveSystem
 end
 
 --[[
@@ -402,6 +420,11 @@ function PlayerStateManager.enterDowned(self: PlayerStateManager, player: Player
 
 	self:replicateState(player)
 
+	-- Notify ReviveSystem to create the ProximityPrompt and fire notifications
+	if self.reviveSystem then
+		self.reviveSystem:onPlayerDowned(player)
+	end
+
 	print(`[PlayerStateManager] {player.Name} is downed — {Constants.DOWNED_REVIVE_WINDOW}s to revive`)
 end
 
@@ -489,8 +512,9 @@ function PlayerStateManager.replicateState(self: PlayerStateManager, player: Pla
 end
 
 --[[
-	Kill a player outright. Resets health to 0, clears downed state,
-	and loads the character to trigger respawn.
+	Kill a player outright. Routes through LivesManager if available to
+	handle the hearts/lives lifecycle. Falls back to instant death if
+	LivesManager is not wired in.
 ]]
 function PlayerStateManager.killPlayer(self: PlayerStateManager, player: Player)
 	local state = self.states[player]
@@ -511,16 +535,21 @@ function PlayerStateManager.killPlayer(self: PlayerStateManager, player: Player)
 		end
 	end
 
-	-- Force the character to die so Roblox handles respawn
-	local character = player.Character
-	local humanoid = if character then character:FindFirstChildOfClass("Humanoid") else nil
-	if humanoid then
-		humanoid.Health = 0
-	end
-
 	self:replicateState(player)
 
-	print(`[PlayerStateManager] {player.Name} has been killed`)
+	-- Route through LivesManager for hearts/death animation lifecycle
+	if self.livesManager then
+		self.livesManager:onPlayerDeath(player)
+		print(`[PlayerStateManager] {player.Name} killed — routed to LivesManager`)
+	else
+		-- Fallback: no LivesManager, force Roblox respawn directly
+		local character = player.Character
+		local humanoid = if character then character:FindFirstChildOfClass("Humanoid") else nil
+		if humanoid then
+			humanoid.Health = 0
+		end
+		print(`[PlayerStateManager] {player.Name} has been killed (no LivesManager)`)
+	end
 end
 
 return PlayerStateManager

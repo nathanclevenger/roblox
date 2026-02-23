@@ -1,0 +1,15 @@
+[package]
+name = "nathanclevenger/draw-to-escape"
+version = "0.1.0"
+registry = "https://github.com/upliftgames/wally-index"
+realm = "shared"
+
+[dependencies]
+Promise = "evaera/promise@^4.0"
+Signal = "sleitnick/signal@^2.0"
+Trove = "sleitnick/trove@^1.1"
+TableUtil = "sleitnick/table-util@^1.2"
+
+[server-dependencies]
+
+[dev-dependencies]

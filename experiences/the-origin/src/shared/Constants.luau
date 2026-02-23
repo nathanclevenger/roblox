@@ -64,9 +64,59 @@ local Constants = {
 	EXTRACTION_BEACON_DUO = 75,
 	EXTRACTION_BEACON_SQUAD = 90,
 
+	-- Lives System
+	MAX_HEARTS = 3,
+	DEATH_ANIMATION_DURATION_1 = 5, -- seconds, first death
+	DEATH_ANIMATION_DURATION_2 = 6, -- seconds, second death
+	DEATH_ANIMATION_DURATION_3 = 10, -- seconds, third/final death
+	RESPAWN_GRACE_PERIOD = 5, -- seconds of proximity fear immunity after respawn
+	POST_DEATH2_DESATURATION = 0.05, -- baseline desaturation after 2nd death
+	HEART_FRAGMENT_COUNT = 14, -- fragments per heart shatter (12-16 range)
+
+	-- Checkpoint positions (Level 1 — St. Maren's Hospital)
+	CHECKPOINTS_LEVEL_1 = {
+		{ name = "Ambulance Bay", position = Vector3.new(0, 5, 0) },
+		{ name = "Ground Floor Corridor", position = Vector3.new(60, 5, 30) },
+		{ name = "Upper Floor Hallway", position = Vector3.new(60, 20, 60) },
+		{ name = "Basement Corridor", position = Vector3.new(30, -10, 45) },
+	},
+
 	-- Multiplayer
 	DOWNED_REVIVE_WINDOW = 30, -- seconds
 	DOWNED_REVIVE_HEALTH = 1, -- pips after revive
+
+	-- Jumpscare System
+	SCARE_GLOBAL_COOLDOWN = 90, -- seconds between any scare
+	SCARE_MAX_PER_10MIN = 2,
+	SCARE_CATEGORY_C_RESPAWN_IMMUNITY = 30, -- seconds after respawn
+	SCARE_CATEGORY_D_FINAL_LIFE_MULTIPLIER = 2,
+	SCARE_ENTITY_NEARBY_RANGE = 40, -- studs; Category B triggers within this range
+
+	-- Entity Damage
+	ENTITY_DAMAGE_AMOUNT = 2, -- health pips per hit
+	ENTITY_DAMAGE_COOLDOWN = 1.5, -- seconds between hits on same player
+	ENTITY_CATCH_STUN_DURATION = 0.5, -- seconds player is stunned
+	ENTITY_HIDING_SPOT_REVEAL_TIME = 2, -- seconds before entity drags player out
+	ENTITY_DAMAGE_RANGE = 3, -- studs
+	ENTITY_DOOR_DETECT_RANGE = 5, -- studs
+
+	-- Doors
+	DOOR_OPEN_DURATION = 0.3, -- seconds for door open tween
+	DOOR_ENTITY_BREAK_DURATION = 0.15, -- faster for entity
+	DOOR_ENTITY_PATROL_OPEN_DURATION = 1.0, -- slower when not chasing
+	DOOR_OPEN_ANGLE = 90, -- degrees
+
+	-- Spectator / CCTV
+	CCTV_STATIC_INTENSITY = 0.15,
+	CCTV_DESATURATION = -0.5,
+	NOTIFICATION_DISPLAY_TIME = 3, -- seconds
+	NOTIFICATION_FADE_IN = 0.3,
+	NOTIFICATION_FADE_OUT = 0.5,
+	MAX_VISIBLE_NOTIFICATIONS = 3,
+
+	-- Revive
+	REVIVE_HOLD_DURATION = 5, -- seconds to hold prompt
+	REVIVE_PROMPT_DISTANCE = 8, -- studs
 
 	-- Levels
 	LEVELS = {

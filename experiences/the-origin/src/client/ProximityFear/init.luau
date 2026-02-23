@@ -33,6 +33,7 @@ export type ProximityFear = typeof(setmetatable(
 		targetIntensity: number,
 		cooldownTimer: number,
 		isInCooldown: boolean,
+		isFrozen: boolean, -- true during death animation; effects freeze in place
 	},
 	ProximityFear
 ))
@@ -47,6 +48,7 @@ function ProximityFear.new(player: Player): ProximityFear
 		targetIntensity = 0,
 		cooldownTimer = 0,
 		isInCooldown = false,
+		isFrozen = false,
 	}, ProximityFear)
 
 	return self
@@ -71,7 +73,55 @@ function ProximityFear.getTierFromDistance(_self: ProximityFear, distance: numbe
 	end
 end
 
+--[[
+	Freeze all proximity fear effects at their current level.
+	Called during the death animation so effects don't change.
+]]
+function ProximityFear.freeze(self: ProximityFear)
+	self.isFrozen = true
+	-- Mute audio during death (the death animation handles its own audio)
+	self.audio:update(0, 0, "Safe")
+end
+
+--[[
+	Unfreeze proximity fear effects, allowing them to update again.
+]]
+function ProximityFear.unfreeze(self: ProximityFear)
+	self.isFrozen = false
+end
+
+--[[
+	Reset to the Safe tier with zero intensity.
+	Called after respawn to give the player a clean slate.
+]]
+function ProximityFear.resetToSafe(self: ProximityFear)
+	self.currentTier = "Safe"
+	self.currentIntensity = 0
+	self.targetIntensity = 0
+	self.isInCooldown = false
+	self.cooldownTimer = 0
+	self.visual:update(0, 0, "Safe")
+	self.audio:update(0, 0, "Safe")
+end
+
+--[[
+	Return the current fear tier as a numeric value (0-4).
+]]
+function ProximityFear.getTierNumber(self: ProximityFear): number
+	if self.currentTier == "Safe" then return 0
+	elseif self.currentTier == "Unease" then return 1
+	elseif self.currentTier == "Dread" then return 2
+	elseif self.currentTier == "Panic" then return 3
+	else return 4
+	end
+end
+
 function ProximityFear.update(self: ProximityFear, dt: number, entityDistance: number?)
+	-- Skip updates while frozen (during death animation)
+	if self.isFrozen then
+		return
+	end
+
 	if entityDistance then
 		local tier, intensity = self:getTierFromDistance(entityDistance)
 		self.currentTier = tier

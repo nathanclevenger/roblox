@@ -18,11 +18,22 @@ Remotes.init()
 -- Initialize game manager (owns all subsystems internally)
 local gameManager = GameManager.new()
 
--- Server heartbeat — update entity AI, blood trails, downed timers, scripted events
+-- Server heartbeat — update entity AI, blood trails, downed timers, scare system
 RunService.Heartbeat:Connect(function(dt: number)
 	gameManager.entityController:update(dt)
 	gameManager.bloodTrailSystem:update(dt)
 	gameManager.playerStateManager:updateDownedTimers(dt)
+
+	-- Feed entity position to scare manager for Category B triggers
+	if gameManager.entityController.active then
+		gameManager.scareManager:updateEntityPosition(
+			gameManager.entityController.position,
+			gameManager.entityController.currentState :: string
+		)
+	end
+
+	-- Update scare manager (evaluates eligibility and fires scares)
+	gameManager.scareManager:update(dt)
 end)
 
 -- Player connections

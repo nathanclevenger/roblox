@@ -16,13 +16,19 @@ local Constants = require(ReplicatedStorage.Shared.Constants)
 local Types = require(ReplicatedStorage.Shared.Types)
 
 local BloodTrailSystem = require(script.BloodTrailSystem)
+local DoorSystem = require(script.DoorSystem)
 local EntityController = require(script.EntityAI)
 local HidingSystem = require(script.HidingSystem)
 local Hospital = require(script.Levels.Hospital)
+local LivesManager = require(script.LivesManager)
 local LootSpawner = require(script.LootSpawner)
+local NotificationSystem = require(script.NotificationSystem)
 local ObjectiveManager = require(script.ObjectiveManager)
 local PlayerStateManager = require(script.PlayerStateManager)
 local Remotes = require(script.Remotes)
+local ReviveSystem = require(script.ReviveSystem)
+local ScareManager = require(script.ScareManager)
+local SpectatorManager = require(script.SpectatorManager)
 
 local playerStore = DataStoreService:GetDataStore("PlayerData")
 
@@ -39,27 +45,70 @@ export type GameManager = typeof(setmetatable(
 		levelModel: Model?,
 		levelData: Types.LevelData?,
 		playerStateManager: PlayerStateManager.PlayerStateManager,
+		livesManager: LivesManager.LivesManager,
 		lootSpawner: LootSpawner.LootSpawner,
 		objectiveManager: ObjectiveManager.ObjectiveManager,
 		hidingSystem: HidingSystem.HidingSystem,
 		bloodTrailSystem: BloodTrailSystem.BloodTrailSystem,
+		doorSystem: DoorSystem.DoorSystem,
 		entityController: EntityController.EntityController,
+		notificationSystem: NotificationSystem.NotificationSystem,
+		reviveSystem: ReviveSystem.ReviveSystem,
+		scareManager: ScareManager.ScareManager,
+		spectatorManager: SpectatorManager.SpectatorManager,
 	},
 	GameManager
 ))
 
 function GameManager.new(): GameManager
 	local psm = PlayerStateManager.new()
+	local lives = LivesManager.new()
 	local lootSpawner = LootSpawner.new()
 	local objectiveManager = ObjectiveManager.new()
 	local hidingSystem = HidingSystem.new()
 	local bloodTrailSystem = BloodTrailSystem.new()
+	local doorSystem = DoorSystem.new()
 	local entityController = EntityController.new()
+	local notificationSystem = NotificationSystem.new()
+	local reviveSystem = ReviveSystem.new()
+	local scareManager = ScareManager.new()
+	local spectatorManager = SpectatorManager.new()
 
 	-- Wire loot pickup to PlayerStateManager
 	lootSpawner.onPickupCallback = function(player: Player, item: Types.InventoryItem): boolean
 		return psm:addItem(player, item)
 	end
+
+	-- Wire LivesManager <-> PlayerStateManager (bidirectional)
+	psm:setLivesManager(lives)
+	lives:setPlayerStateManager(psm)
+
+	-- Wire DoorSystem with PlayerStateManager for key checks
+	doorSystem.playerStateManager = psm
+
+	-- Wire DoorSystem sound events to EntityController
+	doorSystem.onSoundEvent = function(event: Types.SoundEvent)
+		entityController:onSoundEvent(event)
+	end
+
+	-- Wire EntityController with external systems for damage, doors, and hiding
+	entityController.playerStateManager = psm
+	entityController.doorSystem = doorSystem
+	entityController.hidingSystem = hidingSystem
+
+	-- Wire ReviveSystem dependencies
+	reviveSystem:setPlayerStateManager(psm)
+	reviveSystem:setLivesManager(lives)
+	reviveSystem:setNotificationSystem(notificationSystem)
+	reviveSystem:setSpectatorManager(spectatorManager)
+
+	-- Wire PlayerStateManager -> ReviveSystem (for downed state notifications)
+	psm:setReviveSystem(reviveSystem)
+
+	-- Wire LivesManager with new systems
+	lives:setNotificationSystem(notificationSystem)
+	lives:setSpectatorManager(spectatorManager)
+	lives:setReviveSystem(reviveSystem)
 
 	local self = setmetatable({
 		players = {},
@@ -70,12 +119,21 @@ function GameManager.new(): GameManager
 		levelModel = nil,
 		levelData = nil,
 		playerStateManager = psm,
+		livesManager = lives,
 		lootSpawner = lootSpawner,
 		objectiveManager = objectiveManager,
 		hidingSystem = hidingSystem,
 		bloodTrailSystem = bloodTrailSystem,
+		doorSystem = doorSystem,
 		entityController = entityController,
+		notificationSystem = notificationSystem,
+		reviveSystem = reviveSystem,
+		scareManager = scareManager,
+		spectatorManager = spectatorManager,
 	}, GameManager)
+
+	-- Give LivesManager a reference back to GameManager (for endRound on final death)
+	lives:setGameManager(self)
 
 	return self
 end
@@ -116,6 +174,9 @@ end
 function GameManager.onPlayerSpawn(self: GameManager, player: Player)
 	self.playerStateManager:initPlayer(player)
 
+	-- Notify scare manager of respawn (Category C immunity timer)
+	self.scareManager:onPlayerRespawn(player)
+
 	-- If a round is active, teleport the player to the level's spawn point
 	if self.roundActive and self.levelData then
 		local character = player.Character
@@ -152,8 +213,12 @@ function GameManager.onPlayerLeave(self: GameManager, player: Player)
 
 	-- Clean up all subsystem state for this player
 	self.playerStateManager:removePlayer(player)
+	self.livesManager:removePlayer(player)
 	self.hidingSystem:removePlayer(player)
 	self.bloodTrailSystem:removePlayer(player)
+	self.reviveSystem:removePlayer(player)
+	self.scareManager:removePlayer(player)
+	self.spectatorManager:removePlayer(player)
 
 	-- Remove from tracking tables
 	self.players[player] = nil
@@ -200,6 +265,25 @@ function GameManager.startRound(self: GameManager, levelName: string)
 			table.insert(waypointPositions, waypoint.position)
 		end
 		self.entityController.stateMachine:setWaypoints(waypointPositions)
+	end
+
+	-- Register doors from the built level geometry
+	if self.levelModel then
+		self:registerDoorsFromLevel(self.levelModel)
+	end
+
+	-- Initialize jumpscare system for this level
+	self.scareManager:registerLevelScares(levelName)
+
+	-- Set level on spectator manager so correct CCTV cameras are used
+	self.spectatorManager:setLevel(levelName)
+
+	-- Initialize lives for all players and set spawn checkpoint
+	for player in self.players do
+		self.livesManager:resetLives(player)
+		if self.levelData then
+			self.livesManager:setCheckpoint(player, self.levelData.spawnPoint, "Spawn")
+		end
 	end
 
 	-- Notify all clients that the round has started
@@ -292,7 +376,13 @@ function GameManager.endRound(self: GameManager, success: boolean)
 		})
 	end
 
+	-- Exit all spectators before cleanup
+	self.spectatorManager:exitAllSpectators()
+	self.reviveSystem:cleanup()
+
 	-- Cleanup all subsystems
+	self.scareManager:cleanup()
+	self.doorSystem:cleanup()
 	self.lootSpawner:cleanup()
 	self.hidingSystem:cleanup()
 	self.bloodTrailSystem:cleanup()
@@ -332,6 +422,56 @@ function GameManager.onServerShutdown(self: GameManager)
 	end
 
 	print("[GameManager] Shutdown save complete")
+end
+
+--[[
+	Scan the level model for Door parts and register them with the DoorSystem.
+	Doors are identified by having a "DoorId" attribute or being named "Door"
+	with appropriate attributes set by Shared.createDoor.
+]]
+function GameManager.registerDoorsFromLevel(self: GameManager, levelModel: Model)
+	local doorCount = 0
+
+	for _, descendant in levelModel:GetDescendants() do
+		if not descendant:IsA("Part") then
+			continue
+		end
+
+		-- Check if this part has a ProximityPrompt (doors created by Shared.createDoor do)
+		local prompt = descendant:FindFirstChildOfClass("ProximityPrompt")
+		if not prompt then
+			continue
+		end
+
+		-- Identify doors by name pattern or attribute
+		local doorId = descendant:GetAttribute("DoorId")
+		if not doorId and descendant.Name:find("Door") then
+			-- Generate an id from name and position
+			local pos = descendant.Position
+			doorId = `{descendant.Name}_{math.floor(pos.X)}_{math.floor(pos.Z)}`
+		end
+
+		if not doorId then
+			continue
+		end
+
+		local isLocked = descendant:GetAttribute("IsLocked") == true
+		local requiredKey = descendant:GetAttribute("RequiredKey")
+		if requiredKey == "" then
+			requiredKey = nil
+		end
+
+		self.doorSystem:registerDoor(
+			descendant :: Part,
+			doorId :: string,
+			isLocked,
+			requiredKey :: string?
+		)
+
+		doorCount += 1
+	end
+
+	print(`[GameManager] Registered {doorCount} doors from level geometry`)
 end
 
 --[[

@@ -113,11 +113,70 @@ export type DoorData = {
 	soundRadius: number,
 }
 
+export type DoorState = {
+	id: string,
+	part: Part?,
+	isLocked: boolean,
+	isOpen: boolean,
+	requiredKey: string?,
+	soundRadius: number,
+	brokenByEntity: boolean,
+	closedCFrame: CFrame?,
+	openCFrame: CFrame?,
+}
+
 export type PlayerSaveData = {
 	levelsUnlocked: { string },
 	loreFound: { string },
 	xp: number,
 	perks: { string },
+}
+
+export type DeathData = {
+	deathNumber: number, -- 1, 2, or 3
+	heartsRemaining: number,
+	isFinalDeath: boolean,
+}
+
+export type CheckpointData = {
+	name: string,
+	position: Vector3,
+}
+
+export type ScareCategory = "A" | "B" | "C" | "D"
+
+export type ScareDefinition = {
+	id: string,
+	category: ScareCategory,
+	name: string,
+	level: number,
+	cooldownOverride: number?, -- optional per-scare cooldown
+	requiresEntityNearby: boolean,
+	multiplayer: "all" | "triggering_player" | "nearest_player",
+}
+
+export type ScareEvent = {
+	scareId: string,
+	category: ScareCategory,
+	position: Vector3?,
+	metadata: { [string]: any }?,
+}
+
+-- Spectator / CCTV
+export type CCTVCamera = {
+	id: string,
+	name: string,
+	cframe: CFrame,
+	level: string,
+}
+
+-- Notification system
+export type NotificationType = "fallen" | "revived" | "died" | "gone" | "checkpoint" | "event"
+
+export type GameNotification = {
+	message: string,
+	notificationType: NotificationType,
+	playerName: string?,
 }
 
 return nil
